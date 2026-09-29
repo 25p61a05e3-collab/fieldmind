@@ -1,205 +1,625 @@
 # FieldMind
 
-> Every solved issue becomes experience.
+> **A field-service troubleshooting agent that remembers what happened before — and uses that experience to improve future incident recommendations.**
 
-FieldMind is a professional field-service troubleshooting workspace for technicians investigating recurring equipment failures. It turns resolved incidents into persistent operational experience so the next recommendation can start from what actually worked before.
+FieldMind is an AI-powered troubleshooting system for field-service teams. It combines **Hindsight persistent memory**, **Groq reasoning**, and **MongoDB** to turn resolved equipment incidents into reusable operational knowledge.
 
-## What is built
+Instead of treating every equipment failure as a completely new problem, FieldMind can recall relevant past experiences and use them when analyzing a new incident.
 
-FieldMind focuses on one persona and one workflow: a field service technician troubleshooting recurring equipment issues.
+---
 
-The working flow is:
+## 🚨 The Problem
 
-```text
-Incident → Hindsight recall → Groq reasoning → Recommendation
-        → Technician resolution → Hindsight retain → Better future response
-```
+Field technicians frequently encounter recurring equipment problems.
 
-The application includes:
+Traditional AI troubleshooting systems can analyze the current incident, but without persistent memory they may repeatedly start from the same point.
 
-- A technician incident console for equipment ID, equipment type, location, issue, symptoms, severity, and operating context.
-- A real backend analysis route that validates input, saves a structured incident, recalls Hindsight experience, calls Groq with the current incident plus recalled evidence, and returns a grounded recommendation.
-- A visible Hindsight memory panel showing actual recalled facts, their type, context, tags, timestamps, metadata, and why they were ranked as relevant.
-- A resolution capture flow that stores the structured result in MongoDB Atlas and retains useful learning in Hindsight.
-- Equipment history backed by structured incident and resolution records.
-- A Demo Mode that uses the same API and service logic, with an isolated Hindsight tag scope so Interaction 1 can start with no session memories and later stages can add realistic synthetic experience through actual retain calls.
-- Explicit provider states. Missing or failing Hindsight, Groq, or MongoDB does not become a fake success state.
+A technician may already have discovered the real cause of a previous failure, but that resolution can be difficult to reuse when a similar incident happens again.
 
-## Why persistent memory matters
+### FieldMind's approach
 
-A normal chat transcript is not enough for field operations. FieldMind retains useful operational learning: what equipment failed, what conditions were present, what diagnosis was confirmed, what actions were tried, what worked or failed, and what the technician wants the next person to know.
-
-MongoDB stores structured application records for incident history and auditability. Hindsight is the persistent agent memory layer. MongoDB is not used as a substitute for Hindsight recall.
-
-## How Hindsight Makes FieldMind Better
-
-1. **First incident:** the technician receives a first-pass checklist when no relevant experience exists.
-2. **Repeated incidents:** Hindsight recall surfaces prior equipment-specific resolutions and similar cases.
-3. **More history:** accumulated successful and unsuccessful attempts change which diagnostic action is recommended first.
-4. **Resolution:** the technician records what actually happened.
-5. **Future incident:** the learning is retained in Hindsight and can be recalled for the next related incident.
-
-The UI makes this visible with the Hindsight panel, evidence cards, the memory-influence explanation, the retained-learning confirmation, and the Interaction 1 → 5 → 10 → 20 progression rail.
-
-## Architecture
+FieldMind creates a continuous learning loop:
 
 ```text
-React/Vite technician console
-          │ same-origin REST calls
-          ▼
-Express server
-  ├─ Incident API + validation
-  ├─ Agent orchestrator
-  │    ├─ Hindsight recall/retain
-  │    └─ Groq JSON recommendation
-  └─ MongoDB Atlas structured records
+New Incident
+     ↓
+Recall Relevant Experience
+     ↓
+AI Troubleshooting
+     ↓
+Technician Resolution
+     ↓
+Retain the New Experience
+     ↓
+Future Similar Incident
+     ↓
+Memory-Informed Recommendation
 ```
 
-### Hindsight integration
+The important difference is that **the resolution becomes part of the agent's future context**.
 
-The server uses the official Hindsight HTTP contract documented at [hindsight.vectorize.io](https://hindsight.vectorize.io/):
+---
 
-- Recall: `POST /v1/default/banks/{bank_id}/memories/recall`
-- Retain: `POST /v1/default/banks/{bank_id}/memories`
+## 🧠 Why Hindsight Memory Matters
 
-The implementation sends the API key in a server-side `Authorization: Bearer …` header. It uses the documented recall fields (`query`, `types`, `prefer_observations`, `budget`, `max_tokens`, `query_timestamp`, and optional `tags`) and the documented retain item fields (`content`, `context`, `timestamp`, `document_id`, `metadata`, and `tags`).
+FieldMind uses **Hindsight** as its persistent memory layer.
 
-Hindsight recall returns structured facts, not raw chat history. FieldMind maps those facts into evidence cards without inventing scores or confidence percentages. A Hindsight error produces an explicit `unavailable` state and a visible note such as:
+The agent performs a memory recall before generating a recommendation.
 
-> Memory service unavailable — this recommendation was generated without historical experience.
+After a technician resolves an incident, FieldMind extracts the useful operational knowledge and stores it back into Hindsight.
 
-### Groq integration
+This creates a feedback loop:
 
-`server/services/groq.ts` calls Groq's OpenAI-compatible chat completions endpoint from the server. The prompt contains the incident and recalled Hindsight evidence. The response is required to be JSON with a validated recommendation shape. Malformed output is rejected and shown as an explicit fallback state; hidden chain-of-thought is never sent to the browser.
+```text
+                 ┌──────────────────────┐
+                 │   New Field Incident │
+                 └──────────┬───────────┘
+                            ↓
+                 ┌──────────────────────┐
+                 │   Hindsight Recall   │
+                 └──────────┬───────────┘
+                            ↓
+                 ┌──────────────────────┐
+                 │    Groq Reasoning    │
+                 └──────────┬───────────┘
+                            ↓
+                 ┌──────────────────────┐
+                 │ Troubleshooting Plan │
+                 └──────────┬───────────┘
+                            ↓
+                 ┌──────────────────────┐
+                 │ Technician Resolution│
+                 └──────────┬───────────┘
+                            ↓
+                 ┌──────────────────────┐
+                 │   Hindsight Retain   │
+                 └──────────┬───────────┘
+                            │
+                            └──────→ Future Incidents
+```
 
-### MongoDB integration
+---
 
-`server/services/mongo.ts` uses the official MongoDB Node driver. It stores incidents, resolutions, and demo sessions in the configured database. If MongoDB is not configured in local preview, the app uses an ephemeral in-process store and labels records as `ephemeral`; it does not present that fallback as durable storage.
+# 🔄 Real Demonstrated Memory Loop
 
-## Environment variables
+FieldMind was tested using a real P-204 pump incident.
 
-Copy `.env.example` to `.env` for local development. Keep all credentials server-side.
+### First incident
 
-| Variable             | Required for               | Description                                                         |
-| -------------------- | -------------------------- | ------------------------------------------------------------------- |
-| `MONGODB_URI`        | Durable structured records | MongoDB Atlas connection string.                                    |
-| `MONGODB_DB_NAME`    | MongoDB                    | Defaults to `fieldmind`.                                            |
-| `HINDSIGHT_BASE_URL` | Real memory                | Hindsight Cloud/API base URL supplied by the Hindsight workspace.   |
-| `HINDSIGHT_API_KEY`  | Real memory                | Hindsight server credential.                                        |
-| `HINDSIGHT_BANK_ID`  | Real memory                | Hindsight memory bank, for example `fieldmind`.                     |
-| `GROQ_API_KEY`       | AI reasoning               | Groq server credential.                                             |
-| `GROQ_MODEL`         | Groq                       | Defaults to `openai/gpt-oss-120b`.                                  |
-| `GROQ_BASE_URL`      | Groq                       | Defaults to `https://api.groq.com/openai/v1`.                       |
-| `VITE_API_BASE_URL`  | Split deployment only      | Optional Netlify → Render backend URL. Never put private keys here. |
+The pump reported excessive vibration and shutdown behavior after operating for approximately 10 minutes.
 
-No provider credentials are committed in the repository or exposed to the browser.
+At this point, Hindsight had no relevant prior experience available for the incident.
 
-## Local development
+FieldMind generated a troubleshooting recommendation using the current incident information.
 
-Requirements: Node.js 22 and pnpm 10.18.0.
+### Technician resolution
+
+The technician identified:
+
+> Coupling misalignment caused excessive vibration after the pump warmed up.
+
+The resolution included:
+
+- Checking alignment
+- Correcting the coupling
+- Tightening hardware
+- Verifying vibration
+- Confirming that vibration returned to normal
+
+The resolution was then retained as experience in Hindsight.
+
+### Second related incident
+
+A related P-204 incident was analyzed again.
+
+This time, Hindsight returned a relevant previous experience.
+
+The generated recommendation referenced the previous coupling-misalignment resolution and incorporated that memory into the troubleshooting process.
+
+### Result
+
+```text
+P-204 Incident #1
+       ↓
+No relevant memory
+       ↓
+AI recommendation
+       ↓
+Technician finds coupling misalignment
+       ↓
+Resolution retained in Hindsight
+       ↓
+P-204 Incident #2
+       ↓
+Hindsight recalls 1 relevant experience
+       ↓
+Recommendation influenced by previous resolution
+```
+
+This demonstrates the core FieldMind capability:
+
+> **Incident → Recall → Reason → Resolve → Retain → Recall again**
+
+---
+
+# ⚙️ How FieldMind Works
+
+## 1. Incident Intake
+
+A field incident contains information such as:
+
+- Equipment ID
+- Equipment type
+- Symptoms
+- Operating conditions
+- Previous observations
+- Severity
+- Technician notes
+
+---
+
+## 2. Hindsight Recall
+
+Before generating a recommendation, FieldMind queries Hindsight for relevant experiences and observations.
+
+The recall layer uses the incident context to retrieve memories that may help with the current problem.
+
+---
+
+## 3. AI Reasoning
+
+The recalled context is passed into the reasoning process powered by Groq.
+
+The agent combines:
+
+```text
+Current Incident
+       +
+Relevant Hindsight Memories
+       ↓
+Troubleshooting Recommendation
+```
+
+The recommendation contains structured troubleshooting information such as:
+
+- Immediate safety actions
+- Troubleshooting sequence
+- Warnings
+- Root-cause hypotheses
+- Recommended checks
+
+---
+
+## 4. Technician Resolution
+
+After troubleshooting, the technician records the actual resolution.
+
+FieldMind captures:
+
+- Root cause
+- Actions taken
+- Verification
+- Technician feedback
+
+---
+
+## 5. Hindsight Retain
+
+The useful resolution is converted into structured experience and retained in Hindsight.
+
+This means the outcome is not discarded after the incident is closed.
+
+It becomes potential knowledge for future incidents.
+
+---
+
+# 🏗️ Architecture
+
+```text
+┌───────────────────────┐
+│      FieldMind UI     │
+│       React + Vite    │
+└───────────┬───────────┘
+            │
+            ↓
+┌───────────────────────┐
+│    Express Backend    │
+│      REST APIs        │
+└───────┬───────┬──────┘
+        │       │
+        │       │
+        ↓       ↓
+┌───────────┐ ┌───────────────┐
+│ Hindsight │ │     Groq      │
+│  Memory   │ │ AI Reasoning  │
+└───────────┘ └───────────────┘
+        │
+        ↓
+┌───────────────────────┐
+│       MongoDB         │
+│ Incidents / Resolutions│
+└───────────────────────┘
+```
+
+### Memory flow
+
+```text
+Incident
+   │
+   ├──────────────→ MongoDB
+   │
+   ↓
+Hindsight Recall
+   │
+   ↓
+Groq
+   │
+   ↓
+Recommendation
+   │
+   ↓
+Technician Resolution
+   │
+   ├──────────────→ MongoDB
+   │
+   └──────────────→ Hindsight Retain
+```
+
+---
+
+# ✨ Key Features
+
+### Persistent operational memory
+
+Past incident resolutions can become reusable experience.
+
+### Memory-informed troubleshooting
+
+The agent recalls relevant experiences before generating recommendations.
+
+### Structured AI recommendations
+
+Recommendations are returned as structured data rather than only free-form text.
+
+### Technician feedback loop
+
+Technician resolutions can be retained as future knowledge.
+
+### Equipment history
+
+Incident and resolution information can be associated with equipment.
+
+### Demo Mode
+
+FieldMind includes demo scenarios that make it possible to demonstrate the memory loop consistently.
+
+### Safety-first fallback
+
+If external AI or memory providers are unavailable, the system can fall back to a safety-oriented response instead of pretending that an unavailable service succeeded.
+
+---
+
+# 🧰 Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React |
+| Build Tool | Vite |
+| Language | TypeScript |
+| Backend | Node.js + Express |
+| AI | Groq |
+| Persistent Agent Memory | Hindsight |
+| Database | MongoDB |
+| Styling | Tailwind CSS |
+| Testing | Vitest |
+| Package Manager | pnpm |
+
+---
+
+# 📁 Project Structure
+
+```text
+fieldmind/
+│
+├── client/
+│   └── src/
+│       ├── App.tsx
+│       ├── components/
+│       ├── pages/
+│       └── lib/
+│
+├── server/
+│   ├── routes.ts
+│   ├── services/
+│   │   ├── agent.ts
+│   │   ├── groq.ts
+│   │   ├── hindsight.ts
+│   │   └── mongo.ts
+│   └── *.test.ts
+│
+├── shared/
+│   └── types.ts
+│
+├── docs/
+│   └── hindsight-api-notes.md
+│
+├── package.json
+├── pnpm-lock.yaml
+├── .env.example
+└── README.md
+```
+
+---
+
+# 🔐 Environment Variables
+
+Create a local `.env` file based on `.env.example`.
+
+The application requires credentials for the external services used by the agent.
+
+Example structure:
+
+```env
+HINDSIGHT_BASE_URL=https://api.hindsight.vectorize.io
+HINDSIGHT_API_KEY=your_hindsight_api_key
+HINDSIGHT_BANK_ID=FieldMind
+
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=openai/gpt-oss-120b
+
+MONGODB_URI=your_mongodb_connection_string
+```
+
+**Never commit your real `.env` file or API keys to GitHub.**
+
+The repository intentionally includes `.env.example` rather than real credentials.
+
+---
+
+# 🚀 Getting Started
+
+## Requirements
+
+Make sure you have:
+
+- Node.js
+- pnpm
+- MongoDB
+- Hindsight account/API access
+- Groq API access
+
+---
+
+## Install dependencies
 
 ```bash
 pnpm install
-cp .env.example .env
+```
+
+---
+
+## Configure environment
+
+Create:
+
+```text
+.env
+```
+
+using:
+
+```text
+.env.example
+```
+
+as the template.
+
+Add your own service credentials.
+
+---
+
+## Run development server
+
+```bash
 pnpm dev
 ```
 
-The application runs on `http://localhost:3000` by default. The server exposes `GET /api/health` and the route manifest at `GET /manus-routes.json`.
+---
 
-Useful commands:
+# 🧪 Validation
+
+The project includes automated checks for important functionality.
+
+Run TypeScript validation:
 
 ```bash
-pnpm check       # TypeScript compiler
-pnpm test        # Vitest tests
-pnpm build       # Vite frontend + bundled Express server
-pnpm start       # Run the production bundle
-pnpm format      # Prettier
+pnpm check
 ```
 
-## API endpoints
+Run tests:
 
-| Method | Path                          | Purpose                                                                           |
-| ------ | ----------------------------- | --------------------------------------------------------------------------------- |
-| `GET`  | `/api/health`                 | Provider readiness and service health.                                            |
-| `POST` | `/api/incidents`              | Validate, save, recall, reason, and return a recommendation.                      |
-| `GET`  | `/api/incidents/:id`          | Return an incident and its stored resolution.                                     |
-| `POST` | `/api/incidents/:id/resolve`  | Save a resolution, extract useful learning, and retain it in Hindsight.           |
-| `GET`  | `/api/equipment/:equipmentId` | Structured equipment history.                                                     |
-| `GET`  | `/api/memory/recent`          | Hindsight-backed recent recall plus structured resolution audit records.          |
-| `POST` | `/api/demo/start`             | Start a new isolated Demo Mode session.                                           |
-| `POST` | `/api/demo/advance`           | Retain realistic synthetic experiences for the next demo stage through Hindsight. |
-| `GET`  | `/api/demo/status`            | Read current demo session and provider state.                                     |
+```bash
+pnpm test
+```
 
-## Demo instructions
+Create a production build:
 
-1. Configure `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, `HINDSIGHT_BANK_ID`, `GROQ_API_KEY`, and `MONGODB_URI`.
-2. Start the app and click **Demo Mode**.
-3. Analyze **Interaction 1**. Because the demo session has an empty Hindsight tag scope, the memory panel should show no relevant experience and the recommendation should be a generic first-pass checklist.
-4. Record a realistic resolution such as `Coupling misalignment` / `Realigned coupling and verified vibration under load` / `Resolved`. Submit **Retain resolution**.
-5. Choose **Interaction 5**. The backend will retain the demo's realistic P-204/P-207 historical experiences through the same Hindsight retain route, then analyze the related P-204 incident through the same recall and Groq logic.
-6. Repeat the resolution and advance to **Interaction 10** and **Interaction 20**. Watch the memory panel, the `memory influence` explanation, the recommendation source badge, and the retained-learning banner.
-7. Expand each memory card to show what happened, context, timestamp, document ID, tags, and the relevance explanation.
+```bash
+pnpm build
+```
 
-Demo Mode is not a localStorage simulation and does not contain hardcoded recommendation results. If a provider is not configured, the UI says so and does not claim that memory or AI reasoning occurred.
+The final local validation completed successfully for:
 
-## Testing and current verification
+- TypeScript checking
+- Test suite
+- Production build
 
-The repository includes service contract tests for malformed Groq response handling and the documented Hindsight route contract. The implementation has been checked with:
+---
 
-- `pnpm check` — passing.
-- `pnpm build` — passing.
-- `pnpm test` — 4 test files and 10 tests passing.
-- Local development health check — `GET /api/health` returns `200`.
-- Route manifest check — `GET /manus-routes.json` returns the declared JSON contract.
-- No-credential incident request — returns a clearly labeled fallback recommendation and `memoryStatus: "not_configured"` rather than fabricating recall.
+# 🎬 Recommended Demo Flow
 
-A live Hindsight retain/recall → Groq reasoning → resolution → later recall lifecycle requires the manual credentials above. The current verification distinguishes live provider testing from transport and no-credential checks; no live provider credential was available in this environment. Do not treat the no-credential lifecycle check as proof of live provider connectivity.
+The clearest demonstration of FieldMind's core capability is the following sequence:
 
-## Deployment
+### Step 1 — Create the first incident
 
-### Managed project preview/publish
+Use a P-204 pump incident involving excessive vibration.
 
-The managed project is configured as a server-capable application with:
+### Step 2 — Analyze
 
-- `features.server: true`
-- `Dockerfile` container deployment
-- `/api/health` health path
-- `/api/*` and browser catch-all routed to the Express server
+Show that there is no relevant previous experience available.
 
-The container builds the Vite frontend, bundles the Express server, and listens on `PORT`. Add the production values through the managed secret/environment input surface before publishing. A successful checkpoint or Preview is not a live public deployment until Publish confirms it.
+### Step 3 — Show the AI recommendation
 
-### Netlify + Render split deployment
+Allow FieldMind to generate the troubleshooting recommendation.
 
-For the requested external target arrangement:
+### Step 4 — Resolve the incident
 
-- Build the frontend with `pnpm build:static` and publish `dist/public` to Netlify.
-- Deploy the Express container to Render with `pnpm build` and `pnpm start`.
-- Set `VITE_API_BASE_URL` in Netlify to the Render backend URL.
-- Set `MONGODB_URI`, `MONGODB_DB_NAME`, `HINDSIGHT_BASE_URL`, `HINDSIGHT_API_KEY`, `HINDSIGHT_BANK_ID`, and Groq variables in Render only.
-- Set `FRONTEND_ORIGIN` in Render to the exact Netlify origin. The Express server allows only that explicit origin for `/api` requests; the current managed preview is same-origin and does not need CORS.
-
-## Project structure
+Enter the technician's actual resolution:
 
 ```text
-client/
-  public/manus-routes.json   route manifest
-  src/App.tsx                technician console and workflow state
-  src/index.css              FieldMind design system
-  src/lib/api.ts             typed browser API client
-server/
-  _core/index.ts             Express boot and production/static serving
-  routes.ts                  REST endpoints and validation
-  services/agent.ts          recall → reasoning → learning orchestration
-  services/hindsight.ts      documented Hindsight REST client
-  services/groq.ts           Groq JSON reasoning client
-  services/mongo.ts          MongoDB Atlas persistence and preview fallback
-shared/types.ts              shared API contracts
-ideas.md                     committed design brief
-plan.md                      implementation and deployment plan
-.env.example                 required environment variable template
-Dockerfile                   production build and runtime contract
+Root cause:
+Coupling misalignment caused excessive vibration after the pump warmed up.
+
+Actions:
+Checked alignment, corrected coupling, tightened hardware,
+and verified vibration.
+
+Feedback:
+Vibration returned to normal after alignment correction.
 ```
 
-## Future improvements
+### Step 5 — Retain
 
-The focused foundation is ready for an authenticated technician identity, richer equipment metadata, provider-backed search filters, and an asynchronous operation status UI for very large Hindsight retain jobs. Those are intentionally secondary to the working persistent memory loop.
+Show that the resolution was successfully retained in Hindsight.
+
+### Step 6 — Create a related incident
+
+Use another P-204 incident with related symptoms.
+
+### Step 7 — Analyze again
+
+Show Hindsight returning the previous experience.
+
+### Step 8 — Show the difference
+
+The new recommendation should reference the previous coupling-misalignment experience.
+
+This demonstrates that the agent is not simply answering two independent questions.
+
+It is **using persistent memory between incidents**.
+
+---
+
+# 🧠 Hindsight Integration
+
+FieldMind uses Hindsight for two core operations:
+
+## Recall
+
+Before generating a recommendation:
+
+```text
+Current incident
+      ↓
+Hindsight Recall
+      ↓
+Relevant experiences
+      ↓
+AI reasoning
+```
+
+## Retain
+
+After a technician resolves an incident:
+
+```text
+Resolution
+    ↓
+Structured learning
+    ↓
+Hindsight Retain
+    ↓
+Future recall
+```
+
+The Hindsight integration is implemented in:
+
+```text
+server/services/hindsight.ts
+```
+
+The agent orchestration is implemented in:
+
+```text
+server/services/agent.ts
+```
+
+---
+
+# 🔌 External Services
+
+FieldMind currently integrates with:
+
+- Hindsight for persistent agent memory
+- Groq for AI reasoning
+- MongoDB for application data persistence
+
+The system is designed so that the agent's memory layer and application data layer have separate responsibilities.
+
+---
+
+# 📚 Resources
+
+### Hindsight
+
+Hindsight is the persistent memory system used by FieldMind.
+
+- Hindsight GitHub: https://github.com/vectorize-io/hindsight
+- Hindsight Documentation: https://hindsight.vectorize.io/
+- Agent Memory: https://vectorize.io/what-is-agent-memory
+
+---
+
+# 🔭 Future Development
+
+Potential extensions include:
+
+- More equipment-specific memory
+- Larger incident histories
+- Improved memory filtering
+- Technician/team-level operational knowledge
+- Richer equipment timelines
+- Additional field-service workflows
+- More detailed analytics around recurring failures
+
+---
+
+# 📌 Project Status
+
+FieldMind currently demonstrates a working end-to-end memory loop:
+
+```text
+Incident
+  ↓
+Hindsight Recall
+  ↓
+Groq Recommendation
+  ↓
+Technician Resolution
+  ↓
+Hindsight Retain
+  ↓
+Future Incident
+  ↓
+Memory-Informed Recommendation
+```
+
+The core memory workflow has been tested using a real P-204 equipment scenario.
+
+---
+
+# 📄 License
+
+MIT License.
+
+Copyright © 2026 Sandarsh Jeriopothula.
