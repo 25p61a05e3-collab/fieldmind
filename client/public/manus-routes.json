@@ -1,0 +1,7 @@
+{
+  "routes": [
+    { "path": "/", "title": "Incident Console" },
+    { "path": "/equipment/:equipmentId", "title": "Equipment History" },
+    { "path": "/404", "title": "Not Found" }
+  ]
+}
